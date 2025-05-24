@@ -1,13 +1,26 @@
+// middleware/auth.js
+
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-jwt-secret';
+
 const auth = async (req, res, next) => {
   try {
-    const token = req.header('Authorization').replace('Bearer ', '');
+    const authHeader = req.header('Authorization');
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).send({ error: 'Authorization token missing or malformed' });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
     const decoded = jwt.verify(token, JWT_SECRET);
     const user = await User.findOne({ userId: decoded.userId });
-    
+
     if (!user) {
-      throw new Error();
+      return res.status(401).send({ error: 'User not found' });
     }
-    
+
     req.token = token;
     req.user = user;
     next();
@@ -15,3 +28,5 @@ const auth = async (req, res, next) => {
     res.status(401).send({ error: 'Please authenticate' });
   }
 };
+
+module.exports = { protect: auth };
