@@ -24,6 +24,16 @@ const io = new Server(server, {
   cors: { origin: "*" },
 });
 
+require('dotenv').config();
+
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log("MongoDB connected"))
+.catch(err => console.error("MongoDB connection error:", err));
+
+
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
 
