@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 // Register user
 const register = async (req, res) => {
@@ -13,8 +14,14 @@ const register = async (req, res) => {
             return res.status(400).json({ message: 'User already exists' });
         }
 
+        // Generate unique userId
+        const timestamp = Date.now().toString();
+        const randomString = crypto.randomBytes(4).toString('hex');
+        const userId = `${timestamp}-${randomString}`;
+
         // Create new user
         user = new User({
+            userId,
             username,
             password,
             rank: 1000, // Initial rank
@@ -57,12 +64,14 @@ const login = async (req, res) => {
         // Check if user exists
         let user = await User.findOne({ username });
         if (!user) {
+            console.log('User not found');
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
         // Validate password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
+            console.log('Invalid password');
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
@@ -93,6 +102,7 @@ const logout = async (req, res) => {
     try {
         res.json({ message: 'Logged out successfully' });
     } catch (err) {
+        console.log('Logout error');
         console.error(err.message);
         res.status(500).send('Server error');
     }
