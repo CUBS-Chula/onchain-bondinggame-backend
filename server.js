@@ -10,12 +10,15 @@ const http = require('http');
 const app = express();
 const server = http.createServer(app);
 
-
 const User = require('./models/User');
 const Game = require('./models/Game');
+const authRoutes = require('./routes/auth');
 
 app.use(cors());
 app.use(express.json());
+
+// Mount auth routes
+app.use('/api/auth', authRoutes);
 
 const { Server } = require("socket.io");
 
