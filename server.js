@@ -13,6 +13,7 @@ const server = http.createServer(app);
 const User = require('./models/User');
 const Game = require('./models/Game');
 const authRoutes = require('./routes/auth');
+const profileRoutes = require('./routes/profile');
 const { initializeSocketIO } = require('./controllers/socketController');
 
 app.use(cors());
@@ -20,6 +21,8 @@ app.use(express.json());
 
 // Mount auth routes
 app.use('/api/auth', authRoutes);
+// Mount profile routes
+app.use('/api/profile', profileRoutes);
 
 const { Server } = require("socket.io");
 

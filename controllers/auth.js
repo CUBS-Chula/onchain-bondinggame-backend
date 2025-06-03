@@ -59,26 +59,26 @@ const register = async (req, res) => {
 // Login user
 const login = async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { userId} = req.body;
 
         // Check if user exists
-        let user = await User.findOne({ username });
+        let user = await User.findOne({ userId });
         if (!user) {
             console.log('User not found');
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
         // Validate password
-        const isMatch = await bcrypt.compare(password, user.password);
+        /*const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             console.log('Invalid password');
             return res.status(400).json({ message: 'Invalid credentials' });
-        }
+        }*/
 
         // Create JWT token
         const payload = {
             user: {
-                id: user.id
+                id: userId
             }
         };
 

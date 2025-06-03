@@ -118,7 +118,7 @@ const determineWinner = async (game, io) => {
     winner = userId2;
     await updateRankAndScore(userId2, userId1);
   }
-
+  // update winner userId and database 
   game.winner = winner;
   game.status = 'completed';
   await game.save();
