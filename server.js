@@ -21,9 +21,6 @@ const User = require('./models/User');
 const Game = require('./models/Game');
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
-const gameRoutes = require('./routes/game');
-const userRoutes = require('./routes/user');
-const connectDB = require('./config/db');
 const { initializeSocketIO } = require('./controllers/socketController');
 
 // Security Middleware
@@ -46,10 +43,9 @@ app.use(cors({
 app.use(express.json({ limit: '10kb' })); // Body parser with size limit
 
 // Mount routes
-app.use('/api/auth', authRoutes); // No middleware for auth routes
-app.use('/api/profile', profileRoutes); // Profile routes are protected by middleware
-app.use('/api/games', gameRoutes);
-app.use('/api/users', userRoutes);
+app.use('/api/auth', authRoutes);
+// Mount profile routes
+app.use('/api/profile', profileRoutes);
 
 const { Server } = require("socket.io");
 

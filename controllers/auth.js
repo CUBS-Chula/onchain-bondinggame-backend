@@ -1,15 +1,14 @@
 const User = require('../models/User');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
 // Register user
 const register = async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { username, walletId, avatarId } = req.body;
 
-        // Check if user already exists
-        let user = await User.findOne({ username });
+        // Check if user already exists by username or walletId
+        let user = await User.findOne({ $or: [{ username }, { walletId }] });
         if (user) {
             return res.status(400).json({ message: 'User already exists' });
         }
@@ -23,22 +22,18 @@ const register = async (req, res) => {
         user = new User({
             userId,
             username,
-            password,
+            walletId,
+            avatarId,
+            friendList: [],
             rank: 1000, // Initial rank
             score: 0    // Initial score
         });
-
-        // Hash password
-        const salt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(password, salt);
 
         await user.save();
 
         // Create JWT token
         const payload = {
-            user: {
-                id: user.id
-            }
+            id: user.userId
         };
 
         jwt.sign(
@@ -59,27 +54,22 @@ const register = async (req, res) => {
 // Login user
 const login = async (req, res) => {
     try {
-        const { userId} = req.body;
+        const { userId, walletId } = req.body;
 
-        // Check if user exists
-        let user = await User.findOne({ userId });
+        // Find user by userId or walletId
+        let user = null;
+        if (userId) {
+            user = await User.findOne({ userId });
+        } else if (walletId) {
+            user = await User.findOne({ walletId });
+        }
         if (!user) {
-            console.log('User not found');
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
-        // Validate password
-        /*const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            console.log('Invalid password');
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }*/
-
         // Create JWT token
         const payload = {
-            user: {
-                id: userId
-            }
+            id: user.userId
         };
 
         jwt.sign(
@@ -114,10 +104,13 @@ const updateUser = async (req, res) => {
         const { id } = req.params;
         const updateData = req.body;
 
-        // Remove password from update data if present
-        if (updateData.password) {
-            delete updateData.password;
-        }
+        // Only allow updating allowed fields
+        const allowedFields = ['avatarId', 'friendList', 'rank', 'score', 'favoriteChain'];
+        Object.keys(updateData).forEach(key => {
+            if (!allowedFields.includes(key)) {
+                delete updateData[key];
+            }
+        });
 
         const user = await User.findByIdAndUpdate(
             id,
