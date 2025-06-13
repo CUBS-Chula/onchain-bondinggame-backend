@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const authMiddleware = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 
 // Get user profile by userId - Protected Route
-router.get('/:userId', authMiddleware, async (req, res) => {
+router.get('/:userId', protect, async (req, res) => {
     try {
         const user = await User.findById(req.params.userId)
             .select('-password'); // Exclude password from the response
@@ -21,7 +21,7 @@ router.get('/:userId', authMiddleware, async (req, res) => {
 });
 
 // Update user profile - Protected Route
-router.put('/:userId', authMiddleware, async (req, res) => {
+router.put('/:userId', protect, async (req, res) => {
     try {
         // Check if the authenticated user is updating their own profile
         if (req.user.id !== req.params.userId) {

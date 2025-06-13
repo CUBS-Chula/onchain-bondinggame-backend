@@ -5,7 +5,7 @@ const User = require('../models/User');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-jwt-secret';
 
-const authMiddleware = (req, res, next) => {
+const protect = (req, res, next) => {
   // Get token from header
   const token = req.header('Authorization')?.replace('Bearer ', '');
 
@@ -26,4 +26,4 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-module.exports = authMiddleware;
+module.exports = { protect };

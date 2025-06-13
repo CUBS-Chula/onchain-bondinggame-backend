@@ -1,6 +1,12 @@
 const express = require('express');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
+const { 
+    updateUserInfo, 
+    updateUserScore, 
+    addFriend, 
+    removeFriend 
+} = require('../controllers/user');
 const router = express.Router();
 
 // Get user profile
@@ -40,5 +46,17 @@ router.put('/favorite-chain', protect, async (req, res) => {
         res.status(500).send('Server Error');
     }
 });
+
+// Update user information (using controller)
+router.put('/update', protect, updateUserInfo);
+
+// Update user score
+router.put('/score', protect, updateUserScore);
+
+// Add friend
+router.post('/friends/add', protect, addFriend);
+
+// Remove friend
+router.delete('/friends/remove', protect, removeFriend);
 
 module.exports = router; 

@@ -9,7 +9,7 @@ const http = require('http');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('express-xss-sanitizer');
+const { xss } = require('express-xss-sanitizer');
 const hpp = require('hpp');
 
 require('dotenv').config();
@@ -19,6 +19,7 @@ const server = http.createServer(app);
 
 const User = require('./models/User');
 const Game = require('./models/Game');
+const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const { initializeSocketIO } = require('./controllers/socketController');

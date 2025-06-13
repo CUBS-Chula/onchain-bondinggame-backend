@@ -55,6 +55,7 @@ const register = async (req, res) => {
 const login = async (req, res) => {
     try {
         const { userId, walletId } = req.body;
+        console.log({ userId, walletId });
 
         // Find user by userId or walletId
         let user = null;
@@ -129,9 +130,95 @@ const updateUser = async (req, res) => {
     }
 };
 
+// Get all users
+const getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find({})
+            .select('-__v') // Exclude version field
+            .sort({ score: -1 }); // Sort by score descending (leaderboard style)
+
+        res.json({
+            success: true,
+            count: users.length,
+            data: users
+        });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({ 
+            success: false,
+            message: 'Server error' 
+        });
+    }
+};
+
+// Get user by ID
+const getUserById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await User.findOne({ userId: id }).select('-__v');
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.json({
+            success: true,
+            data: user
+        });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({ 
+            success: false,
+            message: 'Server error' 
+        });
+    }
+};
+
+// Get current user (me)
+const getMe = async (req, res) => {
+    try {
+        // Get token from header
+        const token = req.header('Authorization')?.replace('Bearer ', '') || req.header('x-auth-token');
+        
+        if (!token) {
+            return res.status(401).json({ message: 'No token, authorization denied' });
+        }
+
+        // Verify token
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        
+        // Find user by userId from token payload
+        const user = await User.findOne({ userId: decoded.id }).select('-__v');
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.json({
+            success: true,
+            data: user
+        });
+    } catch (err) {
+        if (err.name === 'JsonWebTokenError') {
+            return res.status(401).json({ message: 'Invalid token' });
+        }
+        if (err.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: 'Token expired' });
+        }
+        console.error(err.message);
+        res.status(500).json({ 
+            success: false,
+            message: 'Server error' 
+        });
+    }
+};
+
 module.exports = {
     register,
     login,
     logout,
-    updateUser
-}; 
+    updateUser,
+    getAllUsers,
+    getUserById,
+    getMe
+};
