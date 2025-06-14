@@ -130,6 +130,173 @@ const updateUser = async (req, res) => {
     }
 };
 
+// Update user points/score
+const updateUserPoints = async (req, res) => {
+    try {
+        const { userId, points, operation = 'add' } = req.body;
+
+        if (!userId || points === undefined) {
+            return res.status(400).json({ message: 'userId and points are required' });
+        }
+
+        if (typeof points !== 'number') {
+            return res.status(400).json({ message: 'Points must be a number' });
+        }
+
+        // Find user
+        const user = await User.findOne({ userId });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Update points based on operation
+        let newScore;
+        switch (operation) {
+            case 'add':
+                newScore = user.score + points;
+                break;
+            case 'subtract':
+                newScore = Math.max(0, user.score - points); // Don't go below 0
+                break;
+            case 'set':
+                newScore = Math.max(0, points); // Don't allow negative scores
+                break;
+            default:
+                return res.status(400).json({ message: 'Invalid operation. Use "add", "subtract", or "set"' });
+        }
+
+        // Update user score
+        user.score = newScore;
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'User points updated successfully',
+            data: {
+                userId: user.userId,
+                username: user.username,
+                previousScore: operation === 'set' ? points - newScore : user.score - points,
+                newScore: newScore,
+                pointsChanged: operation === 'set' ? newScore : points,
+                operation: operation
+            }
+        });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
+// Add friend to user's friend list
+const addFriend = async (req, res) => {
+    try {
+        const { userId, friendId } = req.body;
+
+        if (!userId || !friendId) {
+            return res.status(400).json({ message: 'userId and friendId are required' });
+        }
+
+        if (userId === friendId) {
+            return res.status(400).json({ message: 'Cannot add yourself as a friend' });
+        }
+
+        // Check if both users exist
+        const user = await User.findOne({ userId });
+        const friend = await User.findOne({ userId: friendId });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (!friend) {
+            return res.status(404).json({ message: 'Friend not found' });
+        }
+
+        // Check if friend is already in the list
+        if (user.friendList.includes(friendId)) {
+            return res.status(400).json({ message: 'User is already in friend list' });
+        }
+
+        // Add friend to user's friend list
+        user.friendList.push(friendId);
+        await user.save();
+
+        // Optionally add user to friend's friend list (mutual friendship)
+        if (!friend.friendList.includes(userId)) {
+            friend.friendList.push(userId);
+            await friend.save();
+        }
+
+        res.json({
+            success: true,
+            message: 'Friend added successfully',
+            data: {
+                userId: user.userId,
+                friendList: user.friendList
+            }
+        });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
+// Remove friend from user's friend list
+const removeFriend = async (req, res) => {
+    try {
+        const { userId, friendId } = req.body;
+
+        if (!userId || !friendId) {
+            return res.status(400).json({ message: 'userId and friendId are required' });
+        }
+
+        // Find user
+        const user = await User.findOne({ userId });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Check if friend is in the list
+        if (!user.friendList.includes(friendId)) {
+            return res.status(400).json({ message: 'User is not in friend list' });
+        }
+
+        // Remove friend from user's friend list
+        user.friendList = user.friendList.filter(id => id !== friendId);
+        await user.save();
+
+        // Optionally remove user from friend's friend list (mutual removal)
+        const friend = await User.findOne({ userId: friendId });
+        if (friend && friend.friendList.includes(userId)) {
+            friend.friendList = friend.friendList.filter(id => id !== userId);
+            await friend.save();
+        }
+
+        res.json({
+            success: true,
+            message: 'Friend removed successfully',
+            data: {
+                userId: user.userId,
+                friendList: user.friendList
+            }
+        });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
 // Get all users
 const getAllUsers = async (req, res) => {
     try {
@@ -213,6 +380,41 @@ const getMe = async (req, res) => {
     }
 };
 
+// Get user's friends with details
+const getUserFriends = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        if (!userId) {
+            return res.status(400).json({ message: 'userId is required' });
+        }
+
+        // Find user
+        const user = await User.findOne({ userId }).select('friendList');
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Get friend details
+        const friends = await User.find({ 
+            userId: { $in: user.friendList } 
+        }).select('userId username avatarId rank score');
+
+        res.json({
+            success: true,
+            count: friends.length,
+            data: friends
+        });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
 module.exports = {
     register,
     login,
@@ -220,5 +422,9 @@ module.exports = {
     updateUser,
     getAllUsers,
     getUserById,
-    getMe
+    getMe,
+    addFriend,
+    removeFriend,
+    updateUserPoints,
+    getUserFriends
 };
