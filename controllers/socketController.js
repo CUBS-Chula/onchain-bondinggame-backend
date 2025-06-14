@@ -143,6 +143,19 @@ function handleJoinRoom(socket, { roomId, guestData }) {
     socket.join(roomId);
     
     if (room.guest) {
+      // Check if room is finished - don't send reconnection events for finished games
+      if (room.gameState === 'finished') {
+        console.log(`Host reconnecting to finished game - not sending any events`);
+        return;
+      }
+      
+      // Check if room is in cooldown - don't send reconnection events during cooldown
+      if (room.gameState === 'result-cooldown') {
+        console.log(`Host reconnecting during cooldown period - staying in cooldown`);
+        // Don't emit any events that would restart the game
+        return;
+      }
+      
       // Both players are in room, but don't auto-start game on reconnection
       socket.emit('room-joined-success', { 
         hostData: room.host,
@@ -164,6 +177,19 @@ function handleJoinRoom(socket, { roomId, guestData }) {
     room.guest.socketId = socket.id;
     room.disconnectedAt = null; // Clear disconnection mark
     socket.join(roomId);
+    
+    // Check if room is finished - don't send reconnection events for finished games
+    if (room.gameState === 'finished') {
+      console.log(`Guest reconnecting to finished game - not sending any events`);
+      return;
+    }
+    
+    // Check if room is in cooldown - don't send reconnection events during cooldown
+    if (room.gameState === 'result-cooldown') {
+      console.log(`Guest reconnecting during cooldown period - staying in cooldown`);
+      // Don't emit any events that would restart the game
+      return;
+    }
     
     // Both players are in room, but don't auto-start game on reconnection
     socket.emit('room-joined-success', { 
@@ -210,6 +236,71 @@ function handleJoinRoom(socket, { roomId, guestData }) {
   
   // Don't auto-start game anymore - let players click "Start Game" when ready
   console.log('🎮 Both players joined - waiting for both to be ready to start game');
+}
+
+function handleStartGame(socket, { roomId, userId }) {
+  console.log('=== START GAME REQUEST ===');
+  console.log('Room ID:', roomId);
+  console.log('User ID:', userId);
+  
+  const room = activeRooms.get(roomId);
+  if (!room) {
+    console.log('❌ Room not found:', roomId);
+    socket.emit('room-error', 'Room not found');
+    return;
+  }
+
+  // Check if room is ready for new game
+  if (room.gameState !== 'ready') {
+    console.log('❌ Room not ready for new game, current state:', room.gameState);
+    socket.emit('room-error', 'Room not ready for new game');
+    return;
+  }
+
+  // Both players need to be present
+  if (!room.host || !room.guest) {
+    console.log('❌ Not all players are present');
+    socket.emit('room-error', 'Waiting for opponent');
+    return;
+  }
+
+  // Initialize readyPlayers if it doesn't exist
+  if (!room.readyPlayers) {
+    room.readyPlayers = new Set();
+  }
+
+  // Add this player as ready
+  room.readyPlayers.add(userId);
+  console.log(`✅ Player ${userId} is ready. Ready players: ${room.readyPlayers.size}/2`);
+
+  // Notify the room about the ready status
+  const readyPlayerName = userId === room.host.userId ? room.host.username : room.guest.username;
+  
+  if (room.readyPlayers.size === 1) {
+    // First player is ready, notify the room
+    socket.to(roomId).emit('player-ready', { 
+      playerName: readyPlayerName,
+      readyCount: room.readyPlayers.size,
+      totalPlayers: 2
+    });
+    socket.emit('player-ready', { 
+      playerName: readyPlayerName,
+      readyCount: room.readyPlayers.size,
+      totalPlayers: 2
+    });
+  } else if (room.readyPlayers.size === 2) {
+    console.log('🎮 Both players are ready, starting countdown');
+    
+    // Clear the ready players for next round
+    room.readyPlayers.clear();
+    
+    // Change room state to countdown
+    room.gameState = 'countdown';
+    
+    // Start countdown for both players
+    socket.to(roomId).emit('start-countdown');
+    socket.emit('start-countdown');
+  }
 }
 
 async function handlePlayerChoice(socket, { roomId, choice, userId }, io) {
@@ -314,80 +405,27 @@ async function handlePlayerChoice(socket, { roomId, choice, userId }, io) {
       });
     }
     
-    // Clean up choices for next round
+    // Clean up choices for this game
     playerChoices.delete(hostChoiceKey);
     playerChoices.delete(guestChoiceKey);
     
     console.log(`🧹 Cleaned up choices for room ${roomId}`);
 
-    // Set a cooldown period before allowing new games (5 seconds)
+    // Set room to finished state - no more games allowed
+    room.gameState = 'finished';
+    console.log(`🏁 Game finished for room ${roomId} - no more games allowed`);
+    
+    // Clean up the room after 30 seconds to give players time to see results
     setTimeout(() => {
       const currentRoom = activeRooms.get(roomId);
-      if (currentRoom && currentRoom.gameState === 'result-cooldown') {
-        console.log(`⏰ Cooldown period ended for room ${roomId}, ready for new game`);
-        currentRoom.gameState = 'ready';
+      if (currentRoom && currentRoom.gameState === 'finished') {
+        console.log(`🗑️ Cleaning up finished room ${roomId}`);
+        activeRooms.delete(roomId);
       }
-    }, 5000); // 5 second cooldown
+    }, 30000); // 30 second cleanup
     
   } else {
     console.log('⏳ Waiting for other player...');
-  }
-}
-
-function handlePlayAgain(socket, { roomId, userId }) {
-  console.log('=== PLAY AGAIN REQUEST ===');
-  console.log('Room ID:', roomId);
-  console.log('User ID:', userId);
-  
-  const room = activeRooms.get(roomId);
-  if (!room) {
-    console.log('❌ Room not found:', roomId);
-    socket.emit('room-error', 'Room not found');
-    return;
-  }
-
-  // Check if room is ready for new game
-  if (room.gameState !== 'ready') {
-    console.log('❌ Room not ready for new game, current state:', room.gameState);
-    socket.emit('room-error', 'Room not ready for new game');
-    return;
-  }
-
-  // Both players need to be present
-  if (!room.host || !room.guest) {
-    console.log('❌ Not all players are present');
-    socket.emit('room-error', 'Waiting for opponent');
-    return;
-  }
-
-  // Initialize playAgainRequests if it doesn't exist
-  if (!room.playAgainRequests) {
-    room.playAgainRequests = new Set();
-  }
-
-  // Add this player's request
-  room.playAgainRequests.add(userId);
-  console.log(`✅ Play again request from ${userId}. Requests: ${room.playAgainRequests.size}/2`);
-
-  // Check if both players have requested to play again
-  if (room.playAgainRequests.size === 2) {
-    console.log('🎮 Both players want to play again, starting new game');
-    
-    // Clear the requests for next round
-    room.playAgainRequests.clear();
-    
-    // Start countdown for new game
-    socket.to(roomId).emit('start-new-game');
-    socket.emit('start-new-game');
-  } else {
-    // Notify the room that one player wants to play again
-    const requestingPlayerName = userId === room.host.userId ? room.host.username : room.guest.username;
-    socket.to(roomId).emit('play-again-requested', { 
-      requestingPlayer: requestingPlayerName 
-    });
-    socket.emit('play-again-requested', { 
-      requestingPlayer: requestingPlayerName 
-    });
   }
 }
 
@@ -406,25 +444,41 @@ function handleDisconnect(socket) {
       // 1. Both players were present AND
       // 2. Game is in progress (countdown or result state) AND
       // 3. Room is not in waiting state
+      // 4. A player actually disconnected (socket.id matches)
+      const disconnectedPlayer = room.host.socketId === socket.id ? room.host : 
+                                room.guest?.socketId === socket.id ? room.guest : null;
+      
       const shouldNotifyDisconnection = room.host && room.guest && 
-        (room.gameState === 'countdown' || room.gameState === 'result-cooldown') &&
+        disconnectedPlayer && // Make sure we actually have a disconnected player
+        (room.gameState === 'countdown') &&
         room.gameState !== 'waiting-for-player' && 
-        room.gameState !== 'ready';
+        room.gameState !== 'ready' &&
+        room.gameState !== 'finished'; // Don't notify disconnection if game is finished
       
       if (shouldNotifyDisconnection) {
-        console.log(`Notifying room ${roomId} of temporary disconnection`);
+        console.log(`❌ DISCONNECT: Notifying room ${roomId} of temporary disconnection`);
+        console.log(`❌ DISCONNECT: Disconnected player:`, disconnectedPlayer ? disconnectedPlayer.username : 'unknown');
+        console.log(`❌ DISCONNECT: Game state: ${room.gameState}`);
+        console.log(`❌ DISCONNECT: Socket ID: ${socket.id}`);
         socket.to(roomId).emit('player-temporarily-disconnected');
       } else {
-        console.log(`Not notifying disconnection for room ${roomId} - game state: ${room.gameState}`);
+        console.log(`✅ NO DISCONNECT: Not notifying disconnection for room ${roomId}`);
+        console.log(`✅ NO DISCONNECT: Game state: ${room.gameState}`);
+        console.log(`✅ NO DISCONNECT: Has disconnected player: ${!!disconnectedPlayer}`);
+        console.log(`✅ NO DISCONNECT: Socket ID: ${socket.id}`);
       }
       
       // Set a timeout to delete the room if no reconnection happens
       setTimeout(() => {
         const currentRoom = activeRooms.get(roomId);
         if (currentRoom && currentRoom.disconnectedAt) {
-          // Still marked for deletion, so delete it now
-          console.log(`Sending final disconnect notification for room ${roomId}`);
-          socket.to(roomId).emit('player-disconnected');
+          // Only send disconnect notification if game is not finished
+          if (currentRoom.gameState !== 'finished') {
+            console.log(`Sending final disconnect notification for room ${roomId}`);
+            socket.to(roomId).emit('player-disconnected');
+          } else {
+            console.log(`Game finished in room ${roomId}, not sending disconnect notification`);
+          }
           
           // Clean up player choices
           if (currentRoom.host) {
@@ -452,8 +506,8 @@ function initializeSocketIO(io) {
 
     socket.on('create-room', (userData) => handleCreateRoom(socket, userData));
     socket.on('join-room', (data) => handleJoinRoom(socket, data));
+    socket.on('start-game', (data) => handleStartGame(socket, data));
     socket.on('player-choice', (data) => handlePlayerChoice(socket, data, io));
-    socket.on('play-again', (data) => handlePlayAgain(socket, data));
     socket.on('disconnect', () => handleDisconnect(socket));
 
     // Send room stats for debugging
