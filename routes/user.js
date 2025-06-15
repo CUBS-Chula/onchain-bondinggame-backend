@@ -5,7 +5,8 @@ const {
     updateUserInfo, 
     updateUserScore, 
     addFriend, 
-    removeFriend 
+    removeFriend,
+    getUserGameHistory 
 } = require('../controllers/user');
 const router = express.Router();
 
@@ -59,4 +60,7 @@ router.post('/friends/add', protect, addFriend);
 // Remove friend
 router.delete('/friends/remove', protect, removeFriend);
 
-module.exports = router; 
+// Get user's game history
+router.get('/game-history/:userId?', protect, getUserGameHistory);
+
+module.exports = router;

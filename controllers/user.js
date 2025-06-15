@@ -4,7 +4,7 @@ const User = require('../models/User');
 const updateUserInfo = async (req, res) => {
     try {
         const userId = req.user.id; // From auth middleware
-        const { username, avatarId, favoriteChain } = req.body;
+        const { username, avatarId, bannerId, favoriteChain } = req.body;
 
         // Find the user
         const user = await User.findOne({ userId });
@@ -31,6 +31,11 @@ const updateUserInfo = async (req, res) => {
         // Update avatarId if provided
         if (avatarId !== undefined) {
             updateFields.avatarId = avatarId;
+        }
+
+        // Update bannerId if provided
+        if (bannerId !== undefined) {
+            updateFields.bannerId = bannerId;
         }
 
         // Update favoriteChain if provided
@@ -61,6 +66,7 @@ const updateUserInfo = async (req, res) => {
             walletId: updatedUser.walletId,
             friendList: updatedUser.friendList,
             avatarId: updatedUser.avatarId,
+            bannerId: updatedUser.bannerId,
             rank: updatedUser.rank,
             score: updatedUser.score,
             favoriteChain: updatedUser.favoriteChain
@@ -201,9 +207,45 @@ const removeFriend = async (req, res) => {
     }
 };
 
+// Get user's game history
+const getUserGameHistory = async (req, res) => {
+    try {
+        const userId = req.params.userId || req.user.id; // Use provided userId or default to current user
+        const limit = parseInt(req.query.limit) || 0; // Default to all games if no limit provided
+        
+        const user = await User.findOne({ userId });
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        // Get game history, optionally limited
+        let gameHistory = user.gameHistory;
+        
+        // Sort by timestamp (newest first)
+        gameHistory = gameHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        // Apply limit if specified
+        if (limit > 0) {
+            gameHistory = gameHistory.slice(0, limit);
+        }
+        
+        res.json({
+            userId: user.userId,
+            username: user.username,
+            gameHistory: gameHistory
+        });
+        
+    } catch (err) {
+        console.error('Error fetching game history:', err.message);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
 module.exports = {
     updateUserInfo,
     updateUserScore,
     addFriend,
-    removeFriend
+    removeFriend,
+    getUserGameHistory
 };

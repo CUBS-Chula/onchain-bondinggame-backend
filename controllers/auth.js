@@ -5,7 +5,7 @@ const crypto = require('crypto');
 // Register user
 const register = async (req, res) => {
     try {
-        const { username, walletId, avatarId } = req.body;
+        const { username, walletId, avatarId, bannerId, favoriteChain } = req.body;
 
         // Check if user already exists by username or walletId
         let user = await User.findOne({ $or: [{ username }, { walletId }] });
@@ -23,7 +23,9 @@ const register = async (req, res) => {
             userId,
             username,
             walletId,
-            avatarId,
+            avatarId: avatarId || "1",
+            bannerId: bannerId || "1",
+            favoriteChain: favoriteChain || [],
             friendList: [],
             rank: 1000, // Initial rank
             score: 0    // Initial score
@@ -106,7 +108,7 @@ const updateUser = async (req, res) => {
         const updateData = req.body;
 
         // Only allow updating allowed fields
-        const allowedFields = ['avatarId', 'friendList', 'rank', 'score', 'favoriteChain'];
+        const allowedFields = ['avatarId', 'bannerId', 'friendList', 'rank', 'score', 'favoriteChain'];
         Object.keys(updateData).forEach(key => {
             if (!allowedFields.includes(key)) {
                 delete updateData[key];

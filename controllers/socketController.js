@@ -3,6 +3,105 @@ const User = require('../models/User');
 const activeRooms = new Map();
 const playerChoices = new Map();
 
+// Helper function to check if users have already played together
+async function havePlayedTogether(userId1, userId2) {
+  try {
+    console.log(`🔍 Checking if ${userId1} and ${userId2} have played together...`);
+    
+    const user = await User.findOne({ userId: userId1 });
+    
+    if (!user) {
+      console.log(`❌ User ${userId1} not found for played together check`);
+      return false;
+    }
+    
+    // Check if user has played with opponent by looking in game history
+    const havePlayed = user.gameHistory && user.gameHistory.some(game => game.opponentId === userId2);
+    
+    if (havePlayed) {
+      console.log(`⚠️ ${userId1} has already played against ${userId2}`);
+    } else {
+      console.log(`✅ ${userId1} has not played against ${userId2} yet`);
+    }
+    
+    return havePlayed;
+  } catch (error) {
+    console.error('❌ Error checking played together status:', error);
+    return false; // Default to false in case of error
+  }
+}
+
+// Helper function to record game outcome in both users' history
+async function recordGameOutcome(hostUserId, hostUsername, hostAvatarId, hostChoice, guestUserId, guestUsername, guestAvatarId, guestChoice, result) {
+  try {
+    console.log(`📝 Recording game outcome between ${hostUserId} and ${guestUserId}...`);
+    
+    const hostUser = await User.findOne({ userId: hostUserId });
+    const guestUser = await User.findOne({ userId: guestUserId });
+    
+    if (!hostUser || !guestUser) {
+      console.log('❌ One or both users not found for recording game outcome');
+      return;
+    }
+    
+    const timestamp = new Date();
+    
+    // Determine points earned for each player
+    let hostPoints = 0;
+    let guestPoints = 0;
+    let hostResult = '';
+    let guestResult = '';
+    
+    if (result === 'draw') {
+      hostPoints = 1.25;
+      guestPoints = 1.25;
+      hostResult = 'draw';
+      guestResult = 'draw';
+    } else if (result === 'player1') { // Host wins
+      hostPoints = 1.5;
+      guestPoints = 1;
+      hostResult = 'win';
+      guestResult = 'lose';
+    } else { // Guest wins
+      hostPoints = 1;
+      guestPoints = 1.5;
+      hostResult = 'lose';
+      guestResult = 'win';
+    }
+    
+    // Record game in host's history
+    hostUser.gameHistory.push({
+      opponentId: guestUserId,
+      opponentName: guestUsername,
+      opponentAvatarId: guestAvatarId,
+      result: hostResult,
+      pointsEarned: hostPoints,
+      playerChoice: hostChoice,
+      opponentChoice: guestChoice,
+      timestamp
+    });
+    
+    // Record game in guest's history
+    guestUser.gameHistory.push({
+      opponentId: hostUserId,
+      opponentName: hostUsername,
+      opponentAvatarId: hostAvatarId,
+      result: guestResult,
+      pointsEarned: guestPoints,
+      playerChoice: guestChoice,
+      opponentChoice: hostChoice,
+      timestamp
+    });
+    
+    await hostUser.save();
+    await guestUser.save();
+    
+    console.log(`✅ Game outcome recorded for both players`);
+  } catch (error) {
+    console.error('❌ Error recording game outcome:', error);
+  }
+}
+
 // Helper function to add friends mutually
 async function addPlayersAsFriends(userId1, userId2) {
   try {
@@ -50,10 +149,10 @@ async function updateUserPoints(userId, outcome) {
     let pointsToAdd = 0;
     switch (outcome) {
       case 'win':
-        pointsToAdd = 3;
+        pointsToAdd = 1.5;
         break;
       case 'draw':
-        pointsToAdd = 2;
+        pointsToAdd = 1.25;
         break;
       case 'lose':
         pointsToAdd = 1;
@@ -110,7 +209,7 @@ function handleCreateRoom(socket, { roomId, ...userData }) {
   console.log(`Room ${roomId} created by ${userData.username}`);
 }
 
-function handleJoinRoom(socket, { roomId, guestData }) {
+async function handleJoinRoom(socket, { roomId, guestData }) {
   const room = activeRooms.get(roomId);
   
   if (!room) {
@@ -211,6 +310,13 @@ function handleJoinRoom(socket, { roomId, guestData }) {
   // Check if trying to join own room
   if (room.host.userId === guestData.userId) {
     socket.emit('room-error', 'Cannot join your own room');
+    return;
+  }
+  
+  // Check if players have already played together
+  const alreadyPlayed = await havePlayedTogether(room.host.userId, guestData.userId);
+  if (alreadyPlayed) {
+    socket.emit('room-error', 'You have already played with this player once! Try another player.');
     return;
   }
   
@@ -352,12 +458,25 @@ async function handlePlayerChoice(socket, { roomId, choice, userId }, io) {
 
     // Add players as friends after the game (regardless of outcome)
     await addPlayersAsFriends(room.host.userId, room.guest.userId);
+    
+    // Record game outcome with detailed history
+    await recordGameOutcome(
+      room.host.userId, 
+      room.host.username, 
+      room.host.avatarId || '1', 
+      hostChoice,
+      room.guest.userId, 
+      room.guest.username, 
+      room.guest.avatarId || '1', 
+      guestChoice,
+      result
+    );
 
     // Send personalized results to each player and update points
     if (result === 'draw') {
       console.log('📤 Sending draw result to both players');
       
-      // Update points for both players (draw = 2 points each)
+      // Update points for both players (draw = 1.25 points each)
       await updateUserPoints(room.host.userId, 'draw');
       await updateUserPoints(room.guest.userId, 'draw');
       
@@ -370,7 +489,7 @@ async function handlePlayerChoice(socket, { roomId, choice, userId }, io) {
     } else if (result === 'player1') {
       console.log('📤 Host wins, sending results');
       
-      // Update points (host wins = 3 points, guest loses = 1 point)
+      // Update points (host wins = 1.5 points, guest loses = 1 point)
       await updateUserPoints(room.host.userId, 'win');
       await updateUserPoints(room.guest.userId, 'lose');
       
@@ -388,7 +507,7 @@ async function handlePlayerChoice(socket, { roomId, choice, userId }, io) {
     } else {
       console.log('📤 Guest wins, sending results');
       
-      // Update points (guest wins = 3 points, host loses = 1 point)
+      // Update points (guest wins = 1.5 points, host loses = 1 point)
       await updateUserPoints(room.guest.userId, 'win');
       await updateUserPoints(room.host.userId, 'lose');
       
@@ -505,7 +624,14 @@ function initializeSocketIO(io) {
     console.log(`User connected: ${socket.id}`);
 
     socket.on('create-room', (userData) => handleCreateRoom(socket, userData));
-    socket.on('join-room', (data) => handleJoinRoom(socket, data));
+    socket.on('join-room', async (data) => {
+      try {
+        await handleJoinRoom(socket, data);
+      } catch (error) {
+        console.error('Error in join-room handler:', error);
+        socket.emit('room-error', 'Server error joining room');
+      }
+    });
     socket.on('start-game', (data) => handleStartGame(socket, data));
     socket.on('player-choice', (data) => handlePlayerChoice(socket, data, io));
     socket.on('disconnect', () => handleDisconnect(socket));
