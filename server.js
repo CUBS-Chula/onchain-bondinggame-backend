@@ -33,7 +33,7 @@ app.use(hpp()); // Prevent HTTP Parameter Pollution
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 9999999, // limit each IP to 100 requests per windowMs
 });
 app.use("/api/", limiter);
 
@@ -56,6 +56,16 @@ const io = new Server(server, {
   cors: {
     origin: process.env.CORS_ORIGIN || "*",
     credentials: true,
+  },
+  // Performance optimizations
+  transports: ["websocket", "polling"],
+  pingTimeout: 60000, // Increase ping timeout to 60 seconds
+  pingInterval: 25000, // Check connection every 25 seconds
+  maxHttpBufferSize: 1e6, // 1 MB
+  // Connection throttling
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+    skipMiddlewares: true,
   },
 });
 
